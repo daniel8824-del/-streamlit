@@ -302,9 +302,43 @@ with st.sidebar:
         if st.button(q, use_container_width=True):
             if st.session_state.ready:
                 st.session_state.messages.append({"role": "user", "content": q})
-                st.experimental_rerun()
+                
+                # 사용자 메시지 표시
+                with st.container():
+                    st.markdown(f"""
+                    <div class="chat-message user">
+                        <div class="avatar">👤</div>
+                        <div class="message">{q}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # 챗봇 응답 생성
+                with st.spinner("답변을 생성 중입니다..."):
+                    # 챗봇에 질문하고 응답 받기
+                    response = st.session_state.chatbot({"question": q})
+                    answer = response["answer"]
+                    
+                    # 참고 페이지 추출
+                    if "source_documents" in response:
+                        pages = [doc.metadata.get('page', 'N/A') for doc in response["source_documents"]]
+                        answer += f"\n\n**참고 페이지**: {', '.join(map(str, pages))}"
+                    
+                    # 챗봇 메시지 추가
+                    st.session_state.messages.append({"role": "assistant", "content": answer})
+                    
+                    # 챗봇 메시지 표시
+                    with st.container():
+                        st.markdown(f"""
+                        <div class="chat-message bot">
+                            <div class="avatar">🤖</div>
+                            <div class="message">{answer}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
             else:
-                st.warning("먼저 챗봇을 초기화해주세요.")
+                # 이미 경고 메시지가 있으면 표시하지 않음
+                if 'warning_shown' not in st.session_state:
+                    st.warning("먼저 PDF 파일을 업로드해주세요.")
+                    st.session_state.warning_shown = True
 
 # 메인 영역 구성
 # 제목 및 소개
@@ -313,11 +347,6 @@ st.markdown("""
 이 챗봇은 현대자동차 아반떼 2025 모델에 대한 정보를 제공합니다.
 RAG(Retrieval-Augmented Generation) 기술을 활용하여 PDF 형식의 설명서에서 관련 정보를 검색하고,
 이를 기반으로 정확한 답변을 생성합니다.
-
-**사용 방법:**
-1. 사이드바에서 PDF 형식의 설명서 파일을 업로드하세요.
-2. 파일 업로드 후 자동으로 벡터 저장소가 생성되고 챗봇이 초기화됩니다.
-3. 아래 입력창에 질문을 입력하면 답변을 받을 수 있습니다.
 """)
 
 # 챗봇 생성
@@ -332,7 +361,6 @@ if 'chatbot' not in st.session_state:
         else:
             st.session_state.ready = False
     except Exception as e:
-        st.error(f"챗봇 초기화 중 오류가 발생했습니다: {str(e)}")
         st.session_state.ready = False
 else:
     chatbot = st.session_state.chatbot
@@ -347,13 +375,16 @@ if not st.session_state.ready:
     # 화살표로 사이드바 방향 표시
     st.markdown("👈 왼쪽 사이드바에서 PDF 파일을 업로드하세요.")
     
-    # 예시 이미지 또는 설명 추가 (선택 사항)
+    # 사용 방법 안내 (한 번만 표시)
     st.markdown("""
     ### 사용 방법
     1. 왼쪽 사이드바에서 현대자동차 설명서 PDF 파일을 업로드하세요.
     2. 파일 업로드 후 자동으로 처리가 완료되면 질문을 입력할 수 있습니다.
     3. 질문을 입력하면 설명서 내용을 기반으로 답변을 제공합니다.
     """)
+else:
+    # 챗봇이 준비된 경우 사용 방법 안내 숨김
+    pass
 
 # 이전 메시지 표시
 for message in st.session_state.messages:
@@ -406,9 +437,10 @@ if prompt := st.chat_input("질문을 입력하세요..."):
                 </div>
                 """, unsafe_allow_html=True)
     else:
-        # 오류 메시지 대신 PDF 업로드 안내
-        st.info("먼저 PDF 파일을 업로드해주세요. 파일 업로드 후 자동으로 챗봇이 준비됩니다.")
-        st.markdown("👈 왼쪽 사이드바에서 PDF 파일을 업로드하세요.")
+        # 이미 메시지가 있으면 반복 안내 메시지 표시하지 않음
+        if len(st.session_state.messages) <= 1:
+            st.info("먼저 PDF 파일을 업로드해주세요.")
+            st.markdown("👈 왼쪽 사이드바에서 PDF 파일을 업로드하세요.")
 
 # 푸터
 st.markdown("---")
