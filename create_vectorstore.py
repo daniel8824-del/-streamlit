@@ -2,7 +2,7 @@ import os
 from langchain.document_loaders import PyPDFLoader  # PDF 파일 로드
 from langchain.text_splitter import RecursiveCharacterTextSplitter  # 텍스트 분할
 from langchain.embeddings.openai import OpenAIEmbeddings  # OpenAI 임베딩 모델
-from langchain.vectorstores import FAISS  # FAISS 벡터 저장소
+from langchain.vectorstores import SKLearnVectorStore  # scikit-learn 벡터 저장소
 from dotenv import load_dotenv  # 환경 변수 로드
 
 # .env 파일에서 환경 변수 로드
@@ -13,7 +13,7 @@ def create_vectorstore():
     PDF 문서를 로드하고, 청크로 분할한 후 벡터 저장소를 생성하는 함수
     
     Returns:
-        FAISS: 생성된 벡터 저장소
+        SKLearnVectorStore: 생성된 벡터 저장소
     """
     # PDF 파일 경로 설정 (data 폴더 내의 모든 PDF 파일)
     pdf_folder_path = "./data/"
@@ -59,12 +59,12 @@ def create_vectorstore():
     # OpenAI 임베딩 모델 초기화
     embeddings = OpenAIEmbeddings()
     
-    # FAISS 벡터 저장소 생성
-    vectorstore = FAISS.from_documents(chunks, embeddings)
+    # scikit-learn 벡터 저장소 생성
+    vectorstore = SKLearnVectorStore.from_documents(chunks, embeddings)
     
     # 벡터 저장소 저장
-    vectorstore.save_local("faiss_index")
-    print("벡터 저장소가 'faiss_index' 폴더에 저장되었습니다.")
+    vectorstore.save_local("sklearn_index")
+    print("벡터 저장소가 'sklearn_index' 폴더에 저장되었습니다.")
     
     return vectorstore
 

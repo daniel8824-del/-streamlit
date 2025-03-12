@@ -1,6 +1,6 @@
 import os
 from langchain.embeddings.openai import OpenAIEmbeddings  # OpenAI 임베딩 모델
-from langchain.vectorstores import FAISS  # FAISS 벡터 저장소
+from langchain.vectorstores import SKLearnVectorStore  # scikit-learn 벡터 저장소
 from langchain.chat_models import ChatOpenAI  # OpenAI 챗 모델
 from langchain.chains import ConversationalRetrievalChain  # 대화형 검색 체인
 from langchain.memory import ConversationBufferMemory  # 대화 기록 메모리
@@ -14,18 +14,18 @@ def load_vectorstore():
     저장된 벡터 저장소를 로드하는 함수
     
     Returns:
-        FAISS: 로드된 벡터 저장소
+        SKLearnVectorStore: 로드된 벡터 저장소
     """
     # 벡터 저장소가 존재하는지 확인
-    if not os.path.exists("faiss_index"):
+    if not os.path.exists("sklearn_index"):
         print("벡터 저장소가 존재하지 않습니다. create_vectorstore.py를 먼저 실행해주세요.")
         return None
     
     # OpenAI 임베딩 모델 초기화
     embeddings = OpenAIEmbeddings()
     
-    # 저장된 벡터 저장소 로드 (allow_dangerous_deserialization=True 옵션 추가)
-    vectorstore = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+    # 저장된 벡터 저장소 로드
+    vectorstore = SKLearnVectorStore.load_local("sklearn_index", embeddings)
     print("벡터 저장소가 로드되었습니다.")
     
     return vectorstore
