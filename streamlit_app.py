@@ -321,12 +321,18 @@ if prompt:
             try:
                 # 챗봇에 질문하고 응답 받기
                 response = st.session_state.chatbot({"question": prompt})
-                answer = response["answer"]
                 
-                # 참고 페이지 추출
-                if "source_documents" in response:
-                    pages = [doc.metadata.get('page', 'N/A') for doc in response["source_documents"]]
-                    answer += f"\n\n**참고 페이지**: {', '.join(map(str, pages))}"
+                # 응답에서 answer 키가 있는지 확인
+                if isinstance(response, dict) and "answer" in response:
+                    answer = response["answer"]
+                    
+                    # 참고 페이지 추출
+                    if "source_documents" in response:
+                        pages = [doc.metadata.get('page', 'N/A') for doc in response["source_documents"]]
+                        answer += f"\n\n**참고 페이지**: {', '.join(map(str, pages))}"
+                else:
+                    # 응답이 직접 문자열인 경우
+                    answer = str(response)
                 
                 # 챗봇 메시지 추가
                 st.session_state.messages.append({"role": "assistant", "content": answer})
@@ -455,12 +461,18 @@ with st.sidebar:
                     try:
                         # 챗봇에 질문하고 응답 받기
                         response = st.session_state.chatbot({"question": q})
-                        answer = response["answer"]
                         
-                        # 참고 페이지 추출
-                        if "source_documents" in response:
-                            pages = [doc.metadata.get('page', 'N/A') for doc in response["source_documents"]]
-                            answer += f"\n\n**참고 페이지**: {', '.join(map(str, pages))}"
+                        # 응답에서 answer 키가 있는지 확인
+                        if isinstance(response, dict) and "answer" in response:
+                            answer = response["answer"]
+                            
+                            # 참고 페이지 추출
+                            if "source_documents" in response:
+                                pages = [doc.metadata.get('page', 'N/A') for doc in response["source_documents"]]
+                                answer += f"\n\n**참고 페이지**: {', '.join(map(str, pages))}"
+                        else:
+                            # 응답이 직접 문자열인 경우
+                            answer = str(response)
                         
                         # 챗봇 메시지 추가
                         st.session_state.messages.append({"role": "assistant", "content": answer})
