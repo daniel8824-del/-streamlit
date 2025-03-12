@@ -208,7 +208,7 @@ def create_chatbot():
     챗봇을 생성하는 함수
     
     Returns:
-        ConversationalRetrievalChain: 생성된 챗봇
+        RetrievalQA: 생성된 챗봇
     """
     try:
         # 벡터 저장소 로드
@@ -216,12 +216,6 @@ def create_chatbot():
         
         if vectorstore is None:
             return None
-        
-        # 대화 메모리 초기화
-        memory = ConversationBufferMemory(
-            memory_key="chat_history",
-            return_messages=True
-        )
         
         # OpenAI API 키 확인
         if not openai_api_key:
@@ -235,43 +229,46 @@ def create_chatbot():
             openai_api_key=openai_api_key
         )
         
-        # 질문 응답 체인 생성
-        qa_chain = load_qa_chain(llm, chain_type="stuff")
+        # 프롬프트 템플릿 생성
+        template = """
+        다음은 현대자동차 아반떼 2025 모델에 대한 질문입니다:
         
-        # 대화 체인 생성
-        condense_prompt = PromptTemplate.from_template(
-            """다음은 사용자와 AI 비서 간의 친절한 대화입니다.
-            AI 비서는 상황에 맞는 구체적인 정보를 제공합니다.
-            
-            대화 기록:
-            {chat_history}
-            
-            사용자의 질문: {question}
-            
-            AI 비서의 답변:"""
+        {question}
+        
+        다음 정보를 바탕으로 답변해주세요:
+        {context}
+        
+        답변은 친절하고 자세하게 해주세요. 정보가 없는 경우에는 정직하게 모른다고 말해주세요.
+        """
+        
+        prompt = PromptTemplate(
+            template=template,
+            input_variables=["question", "context"]
         )
         
-        condense_question_chain = LLMChain(
+        # RetrievalQA 체인 생성
+        from langchain.chains import RetrievalQA
+        
+        chatbot = RetrievalQA.from_chain_type(
             llm=llm,
-            prompt=condense_prompt
-        )
-        
-        # 최종 대화형 검색 체인 생성
-        chatbot = ConversationalRetrievalChain(
+            chain_type="stuff",
             retriever=vectorstore.as_retriever(search_kwargs={"k": 3}),
-            question_generator=condense_question_chain,
-            combine_docs_chain=qa_chain,
-            memory=memory,
-            return_source_documents=True,
-            verbose=True
+            chain_type_kwargs={"prompt": prompt},
+            return_source_documents=True
         )
         
         # 챗봇 래퍼 함수 생성
         def chatbot_wrapper(query_dict):
             try:
-                result = chatbot(query_dict)
+                # 질문 추출
+                question = query_dict.get("question", "")
+                
+                # RetrievalQA 체인 실행
+                result = chatbot({"query": question})
+                
+                # 결과 형식 변환
                 return {
-                    "answer": result.get("answer", "응답을 생성할 수 없습니다."),
+                    "answer": result.get("result", "응답을 생성할 수 없습니다."),
                     "source_documents": result.get("source_documents", [])
                 }
             except Exception as e:
