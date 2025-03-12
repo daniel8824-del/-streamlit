@@ -53,7 +53,7 @@ def create_chatbot():
     
     # ChatOpenAI 모델 초기화
     llm = ChatOpenAI(
-        model_name="gpt-3.5-turbo",  # 사용할 모델
+        model_name="gpt-4o",  # gpt-3.5-turbo에서 gpt-4o로 변경
         temperature=0.2  # 응답의 창의성 정도 (0에 가까울수록 결정적인 응답)
     )
     
