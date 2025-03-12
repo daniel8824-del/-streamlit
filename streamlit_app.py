@@ -9,6 +9,9 @@ from langchain.document_loaders import PyPDFLoader  # PDF 파일 로드
 from langchain.text_splitter import RecursiveCharacterTextSplitter  # 텍스트 분할
 from langchain.embeddings.openai import OpenAIEmbeddings  # OpenAI 임베딩 모델
 from dotenv import load_dotenv  # 환경 변수 로드
+from langchain.chains import LLMChain
+from langchain.chains.question_answering import load_qa_chain
+from langchain.prompts import PromptTemplate
 
 # .env 파일에서 환경 변수 로드
 load_dotenv()
@@ -232,15 +235,53 @@ def create_chatbot():
             openai_api_key=openai_api_key
         )
         
-        # 대화형 검색 체인 생성
-        chatbot = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=vectorstore.as_retriever(search_kwargs={"k": 3}),
-            memory=memory,
-            return_source_documents=True
+        # 질문 응답 체인 생성
+        qa_chain = load_qa_chain(llm, chain_type="stuff")
+        
+        # 대화 체인 생성
+        condense_prompt = PromptTemplate.from_template(
+            """다음은 사용자와 AI 비서 간의 친절한 대화입니다.
+            AI 비서는 상황에 맞는 구체적인 정보를 제공합니다.
+            
+            대화 기록:
+            {chat_history}
+            
+            사용자의 질문: {question}
+            
+            AI 비서의 답변:"""
         )
         
-        return chatbot
+        condense_question_chain = LLMChain(
+            llm=llm,
+            prompt=condense_prompt
+        )
+        
+        # 최종 대화형 검색 체인 생성
+        chatbot = ConversationalRetrievalChain(
+            retriever=vectorstore.as_retriever(search_kwargs={"k": 3}),
+            question_generator=condense_question_chain,
+            combine_docs_chain=qa_chain,
+            memory=memory,
+            return_source_documents=True,
+            verbose=True
+        )
+        
+        # 챗봇 래퍼 함수 생성
+        def chatbot_wrapper(query_dict):
+            try:
+                result = chatbot(query_dict)
+                return {
+                    "answer": result.get("answer", "응답을 생성할 수 없습니다."),
+                    "source_documents": result.get("source_documents", [])
+                }
+            except Exception as e:
+                st.error(f"챗봇 응답 생성 중 오류가 발생했습니다: {str(e)}")
+                return {
+                    "answer": f"오류가 발생했습니다: {str(e)}",
+                    "source_documents": []
+                }
+        
+        return chatbot_wrapper
     except Exception as e:
         st.error(f"챗봇 생성 중 오류가 발생했습니다: {str(e)}")
         return None
@@ -321,6 +362,9 @@ if prompt:
             try:
                 # 챗봇에 질문하고 응답 받기
                 response = st.session_state.chatbot({"question": prompt})
+                
+                # 디버깅을 위해 응답 구조 출력
+                st.write(f"응답 구조: {list(response.keys())}")
                 
                 # 응답에서 answer 키가 있는지 확인
                 if isinstance(response, dict) and "answer" in response:
@@ -461,6 +505,9 @@ with st.sidebar:
                     try:
                         # 챗봇에 질문하고 응답 받기
                         response = st.session_state.chatbot({"question": q})
+                        
+                        # 디버깅을 위해 응답 구조 출력
+                        st.write(f"응답 구조: {list(response.keys())}")
                         
                         # 응답에서 answer 키가 있는지 확인
                         if isinstance(response, dict) and "answer" in response:
