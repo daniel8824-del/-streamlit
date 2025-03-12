@@ -20,7 +20,7 @@ if not openai_api_key and hasattr(st, "secrets") and "OPENAI_API_KEY" in st.secr
 
 # 페이지 설정
 st.set_page_config(
-    page_title="현대자동차 설명서 챗봇",
+    page_title="현대자동차 아반떼 2025 설명서 챗봇",
     page_icon="🚗",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -70,69 +70,84 @@ def create_vectorstore():
     Returns:
         SKLearnVectorStore: 생성된 벡터 저장소
     """
-    # PDF 파일 경로 설정 (data 폴더 내의 모든 PDF 파일)
-    pdf_folder_path = "./data/"
-    
-    # data 폴더가 없으면 생성
-    if not os.path.exists(pdf_folder_path):
-        os.makedirs(pdf_folder_path)
-        st.error(f"'{pdf_folder_path}' 폴더가 생성되었습니다. PDF 파일을 이 폴더에 넣어주세요.")
-        return None
-    
-    # PDF 파일 목록 가져오기
-    pdf_files = [f for f in os.listdir(pdf_folder_path) if f.endswith('.pdf')]
-    
-    if not pdf_files:
-        st.error(f"'{pdf_folder_path}' 폴더에 PDF 파일이 없습니다. PDF 파일을 추가해주세요.")
-        return None
-    
-    # 모든 문서를 저장할 리스트
-    all_docs = []
-    
-    # 각 PDF 파일 처리
-    for pdf_file in pdf_files:
-        pdf_path = os.path.join(pdf_folder_path, pdf_file)
-        st.info(f"'{pdf_file}' 파일을 처리 중입니다...")
+    try:
+        # PDF 파일 경로 설정 (data 폴더 내의 모든 PDF 파일)
+        pdf_folder_path = "./data/"
         
-        # PDF 로더를 사용하여 문서 로드
-        loader = PyPDFLoader(pdf_path)
-        documents = loader.load()
+        # data 폴더가 없으면 생성
+        if not os.path.exists(pdf_folder_path):
+            os.makedirs(pdf_folder_path, exist_ok=True)
+            st.warning(f"'{pdf_folder_path}' 폴더가 생성되었습니다. PDF 파일을 업로드해주세요.")
+            return None
         
-        # 문서를 all_docs에 추가
-        all_docs.extend(documents)
+        # PDF 파일 목록 가져오기
+        pdf_files = [f for f in os.listdir(pdf_folder_path) if f.endswith('.pdf')]
+        
+        if not pdf_files:
+            st.warning(f"'{pdf_folder_path}' 폴더에 PDF 파일이 없습니다. PDF 파일을 업로드해주세요.")
+            # 디버깅 정보 출력
+            st.info(f"현재 작업 디렉토리: {os.getcwd()}")
+            st.info(f"data 폴더 경로: {os.path.abspath(pdf_folder_path)}")
+            st.info(f"data 폴더 내 파일 목록: {os.listdir(pdf_folder_path) if os.path.exists(pdf_folder_path) else '폴더가 존재하지 않음'}")
+            return None
+        
+        # 모든 문서를 저장할 리스트
+        all_docs = []
+        
+        # 각 PDF 파일 처리
+        for pdf_file in pdf_files:
+            pdf_path = os.path.join(pdf_folder_path, pdf_file)
+            st.info(f"'{pdf_file}' 파일을 처리 중입니다...")
+            
+            # PDF 로더를 사용하여 문서 로드
+            loader = PyPDFLoader(pdf_path)
+            documents = loader.load()
+            
+            # 문서를 all_docs에 추가
+            all_docs.extend(documents)
+        
+        # 문서를 청크로 분할
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,  # 각 청크의 최대 문자 수
+            chunk_overlap=200,  # 청크 간 중복되는 문자 수
+            length_function=len,
+        )
+        
+        chunks = text_splitter.split_documents(all_docs)
+        st.info(f"총 {len(chunks)}개의 청크로 분할되었습니다.")
+        
+        # OpenAI API 키 확인
+        if not openai_api_key:
+            st.error("OpenAI API 키가 설정되지 않았습니다. Streamlit Cloud의 Secrets 설정에서 OPENAI_API_KEY를 추가해주세요.")
+            return None
+        
+        # OpenAI 임베딩 모델 초기화
+        embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
+        
+        # scikit-learn 벡터 저장소 생성
+        vectorstore = SKLearnVectorStore.from_documents(chunks, embeddings)
+        
+        # sklearn_index 폴더가 없으면 생성
+        if not os.path.exists("sklearn_index"):
+            os.makedirs("sklearn_index", exist_ok=True)
+        
+        # 벡터 저장소 저장 (pickle 사용)
+        vectorstore_path = "sklearn_index/vectorstore.pkl"
+        with open(vectorstore_path, "wb") as f:
+            pickle.dump(vectorstore, f)
+        
+        if os.path.exists(vectorstore_path):
+            st.success(f"벡터 저장소가 '{vectorstore_path}' 파일에 저장되었습니다.")
+        else:
+            st.error(f"벡터 저장소 저장에 실패했습니다. 경로: {vectorstore_path}")
+        
+        return vectorstore
     
-    # 문서를 청크로 분할
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,  # 각 청크의 최대 문자 수
-        chunk_overlap=200,  # 청크 간 중복되는 문자 수
-        length_function=len,
-    )
-    
-    chunks = text_splitter.split_documents(all_docs)
-    st.info(f"총 {len(chunks)}개의 청크로 분할되었습니다.")
-    
-    # OpenAI API 키 확인
-    if not openai_api_key:
-        st.error("OpenAI API 키가 설정되지 않았습니다. Streamlit Cloud의 Secrets 설정에서 OPENAI_API_KEY를 추가해주세요.")
+    except Exception as e:
+        st.error(f"벡터 저장소 생성 중 오류가 발생했습니다: {str(e)}")
+        # 디버깅을 위한 정보 출력
+        st.info(f"현재 작업 디렉토리: {os.getcwd()}")
         return None
-    
-    # OpenAI 임베딩 모델 초기화
-    embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
-    
-    # scikit-learn 벡터 저장소 생성
-    vectorstore = SKLearnVectorStore.from_documents(chunks, embeddings)
-    
-    # sklearn_index 폴더가 없으면 생성
-    if not os.path.exists("sklearn_index"):
-        os.makedirs("sklearn_index")
-    
-    # 벡터 저장소 저장 (pickle 사용)
-    with open("sklearn_index/vectorstore.pkl", "wb") as f:
-        pickle.dump(vectorstore, f)
-    
-    st.success("벡터 저장소가 'sklearn_index/vectorstore.pkl' 파일에 저장되었습니다.")
-    
-    return vectorstore
 
 # 벡터 저장소 로드 함수
 @st.cache_resource
@@ -143,18 +158,32 @@ def load_vectorstore():
     Returns:
         SKLearnVectorStore: 로드된 벡터 저장소
     """
-    # 벡터 저장소 파일 경로 확인
-    vectorstore_path = "sklearn_index/vectorstore.pkl"
+    try:
+        vectorstore_path = "sklearn_index/vectorstore.pkl"
+        
+        # 벡터 저장소 파일이 존재하는지 확인
+        if not os.path.exists(vectorstore_path):
+            st.warning(f"벡터 저장소 파일이 존재하지 않습니다: {vectorstore_path}")
+            st.info("PDF 파일을 업로드하고 '벡터 저장소 생성' 버튼을 클릭하여 벡터 저장소를 생성해주세요.")
+            # 디버깅 정보 출력
+            st.info(f"현재 작업 디렉토리: {os.getcwd()}")
+            st.info(f"sklearn_index 폴더 존재 여부: {os.path.exists('sklearn_index')}")
+            if os.path.exists('sklearn_index'):
+                st.info(f"sklearn_index 폴더 내 파일 목록: {os.listdir('sklearn_index')}")
+            return None
+        
+        # 벡터 저장소 로드
+        with open(vectorstore_path, "rb") as f:
+            vectorstore = pickle.load(f)
+        
+        st.success("벡터 저장소를 성공적으로 로드했습니다.")
+        return vectorstore
     
-    if not os.path.exists(vectorstore_path):
-        st.error("벡터 저장소가 존재하지 않습니다. 먼저 벡터 저장소를 생성해주세요.")
+    except Exception as e:
+        st.error(f"벡터 저장소 로드 중 오류가 발생했습니다: {str(e)}")
+        # 디버깅을 위한 정보 출력
+        st.info(f"현재 작업 디렉토리: {os.getcwd()}")
         return None
-    
-    # 벡터 저장소 로드 (pickle 사용)
-    with open(vectorstore_path, "rb") as f:
-        vectorstore = pickle.load(f)
-    
-    return vectorstore
 
 # 챗봇 생성 함수
 @st.cache_resource
@@ -210,41 +239,70 @@ if 'ready' not in st.session_state:
 with st.sidebar:
     st.header("챗봇 설정")
     
-    # 버튼 두 개를 가로로 배치
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("챗봇 초기화", use_container_width=True):
-            with st.spinner("챗봇을 초기화 중입니다..."):
-                vectorstore = load_vectorstore()
-                if vectorstore:
-                    st.session_state.chatbot = create_chatbot()
-                    st.session_state.ready = True
-                    st.success("챗봇이 준비되었습니다!")
-                    st.experimental_rerun()
+    # 안내 메시지 추가
+    st.info("PDF 파일을 업로드하면 자동으로 벡터 저장소가 생성되고 챗봇이 초기화됩니다.")
     
-    with col2:
-        if st.button("벡터 저장소 생성", use_container_width=True):
-            with st.spinner("벡터 저장소를 생성 중입니다..."):
-                vectorstore = create_vectorstore()
-                if vectorstore:
-                    st.success("벡터 저장소가 성공적으로 생성되었습니다!")
-                    st.session_state.ready = False
-                    st.info("이제 '챗봇 초기화' 버튼을 클릭하여 챗봇을 초기화해주세요.")
+    # 수동 초기화 버튼 (필요한 경우에만 사용)
+    with st.expander("고급 설정", expanded=False):
+        st.caption("아래 버튼은 필요한 경우에만 사용하세요.")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("챗봇 초기화", use_container_width=True):
+                with st.spinner("챗봇을 초기화 중입니다..."):
+                    vectorstore = load_vectorstore()
+                    if vectorstore:
+                        st.session_state.chatbot = create_chatbot()
+                        st.session_state.ready = True
+                        st.success("챗봇이 준비되었습니다!")
+                        st.experimental_rerun()
+        
+        with col2:
+            if st.button("벡터 저장소 생성", use_container_width=True):
+                with st.spinner("벡터 저장소를 생성 중입니다..."):
+                    vectorstore = create_vectorstore()
+                    if vectorstore:
+                        st.success("벡터 저장소가 성공적으로 생성되었습니다!")
+                        st.session_state.ready = False
+                        st.info("이제 '챗봇 초기화' 버튼을 클릭하여 챗봇을 초기화해주세요.")
     
     # PDF 파일 업로드 기능
     st.subheader("PDF 파일 업로드")
     uploaded_file = st.file_uploader("PDF 파일을 업로드하세요", type="pdf")
     
     if uploaded_file is not None:
-        # data 폴더가 없으면 생성
-        if not os.path.exists("./data/"):
-            os.makedirs("./data/")
-        
-        # 업로드된 파일 저장
-        with open(os.path.join("./data/", uploaded_file.name), "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        
-        st.success(f"'{uploaded_file.name}' 파일이 성공적으로 업로드되었습니다!")
+        try:
+            # data 폴더가 없으면 생성
+            if not os.path.exists("./data/"):
+                os.makedirs("./data/", exist_ok=True)
+            
+            # 업로드된 파일 저장
+            file_path = os.path.join("./data/", uploaded_file.name)
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            
+            if os.path.exists(file_path):
+                st.success(f"'{uploaded_file.name}' 파일이 성공적으로 업로드되었습니다!")
+                
+                # 파일 업로드 후 자동으로 벡터 저장소 생성
+                with st.spinner("벡터 저장소를 자동으로 생성 중입니다..."):
+                    vectorstore = create_vectorstore()
+                    if vectorstore:
+                        st.success("벡터 저장소가 성공적으로 생성되었습니다!")
+                        
+                        # 벡터 저장소 생성 후 자동으로 챗봇 초기화
+                        with st.spinner("챗봇을 초기화 중입니다..."):
+                            st.session_state.chatbot = create_chatbot()
+                            st.session_state.ready = True
+                            st.success("챗봇이 준비되었습니다! 이제 질문을 입력하세요.")
+                            st.experimental_rerun()
+            else:
+                st.error(f"파일 저장에 실패했습니다. 경로: {file_path}")
+        except Exception as e:
+            st.error(f"파일 업로드 중 오류가 발생했습니다: {str(e)}")
+            # 디버깅을 위한 정보 출력
+            st.info(f"현재 작업 디렉토리: {os.getcwd()}")
+            st.info(f"파일 이름: {uploaded_file.name}")
+            st.info(f"파일 크기: {len(uploaded_file.getbuffer())} 바이트")
     
     st.markdown("---")
     st.markdown("### 예시 질문")
@@ -271,6 +329,11 @@ st.markdown("""
 이 챗봇은 현대자동차 아반떼 2025 모델에 대한 정보를 제공합니다.
 RAG(Retrieval-Augmented Generation) 기술을 활용하여 PDF 형식의 설명서에서 관련 정보를 검색하고,
 이를 기반으로 정확한 답변을 생성합니다.
+
+**사용 방법:**
+1. 사이드바에서 PDF 형식의 설명서 파일을 업로드하세요.
+2. 파일 업로드 후 자동으로 벡터 저장소가 생성되고 챗봇이 초기화됩니다.
+3. 아래 입력창에 질문을 입력하면 답변을 받을 수 있습니다.
 """)
 
 # 챗봇 생성
@@ -287,7 +350,9 @@ st.markdown("---")
 
 # 채팅 영역
 if not st.session_state.ready:
-    st.warning("챗봇이 초기화되지 않았습니다. 사이드바에서 '챗봇 초기화' 버튼을 클릭하여 시작하세요.")
+    st.info("PDF 파일을 업로드하면 자동으로 챗봇이 초기화됩니다. 사이드바에서 PDF 파일을 업로드해주세요.")
+    # 화살표로 사이드바 방향 표시
+    st.markdown("👈 왼쪽 사이드바에서 PDF 파일을 업로드하세요.")
 
 # 이전 메시지 표시
 for message in st.session_state.messages:
