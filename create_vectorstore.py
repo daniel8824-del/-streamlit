@@ -1,5 +1,6 @@
 import os  # 파일 경로 처리
 import pickle  # 파일 저장 및 로드  
+import numpy as np  # 배열 처리
 from langchain.document_loaders import PyPDFLoader  # PDF 파일 로드
 from langchain.text_splitter import RecursiveCharacterTextSplitter  # 텍스트 분할
 from langchain.embeddings.openai import OpenAIEmbeddings  # OpenAI 임베딩 모델
@@ -8,6 +9,9 @@ from dotenv import load_dotenv  # 환경 변수 로드
 
 # .env 파일에서 환경 변수 로드
 load_dotenv()
+
+# OpenAI API 키 가져오기
+openai_api_key = os.environ.get("OPENAI_API_KEY")
 
 def create_vectorstore():
     """
@@ -58,20 +62,30 @@ def create_vectorstore():
     print(f"총 {len(chunks)}개의 청크로 분할되었습니다.")
     
     # OpenAI 임베딩 모델 초기화
-    embeddings = OpenAIEmbeddings()
-    
-    # scikit-learn 벡터 저장소 생성
-    vectorstore = SKLearnVectorStore.from_documents(chunks, embeddings)
+    embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
     
     # sklearn_index 폴더가 없으면 생성
     if not os.path.exists("sklearn_index"):
         os.makedirs("sklearn_index")
     
-    # 벡터 저장소 저장 (pickle 사용)
-    with open("sklearn_index/vectorstore.pkl", "wb") as f:
-        pickle.dump(vectorstore, f)
+    # 벡터 저장소 파일 경로 지정
+    vectorstore_path = os.path.join("sklearn_index", "vectorstore.json")
     
-    print("벡터 저장소가 'sklearn_index/vectorstore.pkl' 파일에 저장되었습니다.")
+    # persist_path를 지정하여 scikit-learn 벡터 저장소 생성
+    vectorstore = SKLearnVectorStore.from_documents(
+        documents=chunks, 
+        embedding=embeddings,
+        persist_path=vectorstore_path  # 저장 경로 지정 (파일 경로)
+    )
+    
+    # 벡터 저장소 저장
+    vectorstore.persist()
+    
+    # 임베딩 모델 저장 (별도로 저장)
+    with open(os.path.join("sklearn_index", "embeddings.pkl"), "wb") as f:
+        pickle.dump(embeddings, f)
+    
+    print(f"벡터 저장소가 '{vectorstore_path}' 파일에 저장되었습니다.")
     
     return vectorstore
 

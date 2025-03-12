@@ -2,7 +2,7 @@
 .env
 
 # 벡터 저장소
-faiss_index/
+sklearn_index/
 
 # 파이썬 캐시 파일
 __pycache__/
