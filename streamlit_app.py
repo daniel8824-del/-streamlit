@@ -17,22 +17,15 @@ load_dotenv()
 st.set_page_config(
     page_title="현대자동차 설명서 챗봇",
     page_icon="🚗",
-    layout="wide",  # centered에서 wide로 변경
-    initial_sidebar_state="expanded"  # 사이드바를 기본적으로 확장
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# 스타일 추가
+# 스타일 추가 - 간소화된 스타일
 st.markdown("""
 <style>
-    .main {
-        background-color: #f5f5f5;
-    }
-    .stApp {
-        max-width: 1200px;  # 최대 너비 증가
-        margin: 0 auto;
-    }
     .chat-message {
-        padding: 1.5rem;
+        padding: 1rem;
         border-radius: 0.5rem;
         margin-bottom: 1rem;
         display: flex;
@@ -56,66 +49,87 @@ st.markdown("""
     .chat-message .message {
         flex-grow: 1;
     }
-    .example-question {
-        padding: 0.5rem 1rem;
-        margin-bottom: 0.5rem;
-        border-radius: 0.3rem;
-        background-color: #f0f2f5;
-        cursor: pointer;
-        transition: background-color 0.3s;
-    }
-    .example-question:hover {
-        background-color: #e6f7ff;
-    }
-    .sidebar .sidebar-content {
-        width: 300px !important;
-    }
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-        padding-left: 2rem;
-        padding-right: 2rem;
-    }
-    /* 사이드바 스타일 개선 */
-    .css-1d391kg {
-        width: 320px;
-    }
-    /* 버튼 스타일 개선 */
-    .stButton>button {
+    button {
         border-radius: 4px;
         padding: 0.5rem 1rem;
         font-weight: 500;
     }
-    /* 메인 컨테이너 패딩 조정 */
-    .main .block-container {
-        max-width: 1000px;
-        padding-left: 2rem;
-        padding-right: 1rem;
-    }
-    /* 채팅 입력창 스타일 개선 */
-    .stChatInputContainer {
-        padding-bottom: 1rem;
-    }
-    /* 헤더 스타일 개선 */
-    h1, h2, h3 {
-        color: #1e3a8a;
-    }
-    /* 경고 메시지 스타일 개선 */
-    .stAlert {
-        border-radius: 4px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
+# 세션 상태 초기화
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+
+if 'ready' not in st.session_state:
+    st.session_state.ready = False
+
+# 사이드바 구성
+with st.sidebar:
+    st.header("챗봇 설정")
+    
+    # 버튼 두 개를 가로로 배치
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("챗봇 초기화", use_container_width=True):
+            with st.spinner("챗봇을 초기화 중입니다..."):
+                vectorstore = load_vectorstore()
+                if vectorstore:
+                    st.session_state.chatbot = create_chatbot()
+                    st.session_state.ready = True
+                    st.success("챗봇이 준비되었습니다!")
+                    st.experimental_rerun()
+    
+    with col2:
+        if st.button("벡터 저장소 생성", use_container_width=True):
+            with st.spinner("벡터 저장소를 생성 중입니다..."):
+                vectorstore = create_vectorstore()
+                if vectorstore:
+                    st.success("벡터 저장소가 성공적으로 생성되었습니다!")
+                    st.session_state.ready = False
+                    st.info("이제 '챗봇 초기화' 버튼을 클릭하여 챗봇을 초기화해주세요.")
+    
+    # PDF 파일 업로드 기능
+    st.subheader("PDF 파일 업로드")
+    uploaded_file = st.file_uploader("PDF 파일을 업로드하세요", type="pdf")
+    
+    if uploaded_file is not None:
+        # data 폴더가 없으면 생성
+        if not os.path.exists("./data/"):
+            os.makedirs("./data/")
+        
+        # 업로드된 파일 저장
+        with open(os.path.join("./data/", uploaded_file.name), "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        
+        st.success(f"'{uploaded_file.name}' 파일이 성공적으로 업로드되었습니다!")
+    
+    st.markdown("---")
+    st.markdown("### 예시 질문")
+    example_questions = [
+        "아반떼 엔진 오일은 어떻게 교체하나요?",
+        "타이어 공기압은 얼마로 유지해야 하나요?",
+        "타이어가 펑크났어. 해결책을 알려줘",
+        "창문에 서리가 자꾸 껴요. 어떻게 해야 하나요?",
+        "연비를 향상시키는 방법이 있을까요?"
+    ]
+    
+    for q in example_questions:
+        if st.button(q, use_container_width=True):
+            if st.session_state.ready:
+                st.session_state.messages.append({"role": "user", "content": q})
+                st.experimental_rerun()
+            else:
+                st.warning("먼저 챗봇을 초기화해주세요.")
+
+# 메인 영역 구성
 # 제목 및 소개
-col1, col2 = st.columns([3, 1])
-with col1:
-    st.title("🚗 현대자동차 설명서 챗봇")
-    st.markdown("""
-    이 챗봇은 현대자동차 아반떼 2025 모델에 대한 정보를 제공합니다.
-    RAG(Retrieval-Augmented Generation) 기술을 활용하여 PDF 형식의 설명서에서 관련 정보를 검색하고,
-    이를 기반으로 정확한 답변을 생성합니다.
-    """)
+st.title("🚗 현대자동차 설명서 챗봇")
+st.markdown("""
+이 챗봇은 현대자동차 아반떼 2025 모델에 대한 정보를 제공합니다.
+RAG(Retrieval-Augmented Generation) 기술을 활용하여 PDF 형식의 설명서에서 관련 정보를 검색하고,
+이를 기반으로 정확한 답변을 생성합니다.
+""")
 
 # 벡터 저장소 생성 함수
 def create_vectorstore():
@@ -243,70 +257,6 @@ def create_chatbot():
     
     return chatbot
 
-# 세션 상태 초기화
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
-
-if 'ready' not in st.session_state:
-    st.session_state.ready = False
-
-# 사이드바에 벡터 저장소 생성 버튼 추가
-with st.sidebar:
-    st.header("챗봇 설정")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("챗봇 초기화", use_container_width=True):
-            with st.spinner("챗봇을 초기화 중입니다..."):
-                vectorstore = load_vectorstore()
-                if vectorstore:
-                    st.session_state.chatbot = create_chatbot()
-                    st.session_state.ready = True
-                    st.success("챗봇이 준비되었습니다!")
-                    st.experimental_rerun()
-    
-    with col2:
-        if st.button("벡터 저장소 생성", use_container_width=True):
-            with st.spinner("벡터 저장소를 생성 중입니다..."):
-                vectorstore = create_vectorstore()
-                if vectorstore:
-                    st.success("벡터 저장소가 성공적으로 생성되었습니다!")
-                    st.session_state.ready = False
-                    st.info("이제 '챗봇 초기화' 버튼을 클릭하여 챗봇을 초기화해주세요.")
-    
-    # PDF 파일 업로드 기능
-    st.subheader("PDF 파일 업로드")
-    uploaded_file = st.file_uploader("PDF 파일을 업로드하세요", type="pdf")
-    
-    if uploaded_file is not None:
-        # data 폴더가 없으면 생성
-        if not os.path.exists("./data/"):
-            os.makedirs("./data/")
-        
-        # 업로드된 파일 저장
-        with open(os.path.join("./data/", uploaded_file.name), "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        
-        st.success(f"'{uploaded_file.name}' 파일이 성공적으로 업로드되었습니다!")
-    
-    st.markdown("---")
-    st.markdown("### 예시 질문")
-    example_questions = [
-        "아반떼 엔진 오일은 어떻게 교체하나요?",
-        "타이어 공기압은 얼마로 유지해야 하나요?",
-        "타이어가 펑크났어. 해결책을 알려줘",
-        "창문에 서리가 자꾸 껴요. 어떻게 해야 하나요?",
-        "연비를 향상시키는 방법이 있을까요?"
-    ]
-    
-    for q in example_questions:
-        if st.button(q, use_container_width=True):
-            if st.session_state.ready:
-                st.session_state.messages.append({"role": "user", "content": q})
-                st.experimental_rerun()
-            else:
-                st.warning("먼저 챗봇을 초기화해주세요.")
-
 # 챗봇 생성
 if 'chatbot' not in st.session_state:
     chatbot = create_chatbot()
@@ -316,66 +266,65 @@ if 'chatbot' not in st.session_state:
 else:
     chatbot = st.session_state.chatbot
 
-# 메인 채팅 영역
-chat_container = st.container()
+# 구분선 추가
+st.markdown("---")
 
-with chat_container:
-    # 벡터 저장소가 없는 경우 안내 메시지 표시
-    if not st.session_state.ready:
-        st.warning("챗봇이 초기화되지 않았습니다. 사이드바에서 '챗봇 초기화' 버튼을 클릭하여 시작하세요.")
-    
-    # 이전 메시지 표시
-    for message in st.session_state.messages:
-        with st.container():
-            st.markdown(f"""
-            <div class="chat-message {'bot' if message['role'] == 'assistant' else 'user'}">
-                <div class="avatar">
-                    {'🤖' if message['role'] == 'assistant' else '👤'}
-                </div>
-                <div class="message">
-                    {message['content']}
-                </div>
+# 채팅 영역
+if not st.session_state.ready:
+    st.warning("챗봇이 초기화되지 않았습니다. 사이드바에서 '챗봇 초기화' 버튼을 클릭하여 시작하세요.")
+
+# 이전 메시지 표시
+for message in st.session_state.messages:
+    with st.container():
+        st.markdown(f"""
+        <div class="chat-message {'bot' if message['role'] == 'assistant' else 'user'}">
+            <div class="avatar">
+                {'🤖' if message['role'] == 'assistant' else '👤'}
             </div>
-            """, unsafe_allow_html=True)
-    
-    # 사용자 입력
-    if prompt := st.chat_input("질문을 입력하세요..."):
-        # 사용자 메시지 추가
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        
-        # 사용자 메시지 표시
-        with st.container():
-            st.markdown(f"""
-            <div class="chat-message user">
-                <div class="avatar">👤</div>
-                <div class="message">{prompt}</div>
+            <div class="message">
+                {message['content']}
             </div>
-            """, unsafe_allow_html=True)
-        
-        if st.session_state.ready:
-            with st.spinner("답변을 생성 중입니다..."):
-                # 챗봇에 질문하고 응답 받기
-                response = st.session_state.chatbot({"question": prompt})
-                answer = response["answer"]
-                
-                # 참고 페이지 추출
-                if "source_documents" in response:
-                    pages = [doc.metadata.get('page', 'N/A') for doc in response["source_documents"]]
-                    answer += f"\n\n**참고 페이지**: {', '.join(map(str, pages))}"
-                
-                # 챗봇 메시지 추가
-                st.session_state.messages.append({"role": "assistant", "content": answer})
-                
-                # 챗봇 메시지 표시
-                with st.container():
-                    st.markdown(f"""
-                    <div class="chat-message bot">
-                        <div class="avatar">🤖</div>
-                        <div class="message">{answer}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-        else:
-            st.error("챗봇이 초기화되지 않았습니다. 사이드바에서 '챗봇 초기화' 버튼을 클릭하여 시작하세요.")
+        </div>
+        """, unsafe_allow_html=True)
+
+# 사용자 입력
+if prompt := st.chat_input("질문을 입력하세요..."):
+    # 사용자 메시지 추가
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    # 사용자 메시지 표시
+    with st.container():
+        st.markdown(f"""
+        <div class="chat-message user">
+            <div class="avatar">👤</div>
+            <div class="message">{prompt}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    if st.session_state.ready:
+        with st.spinner("답변을 생성 중입니다..."):
+            # 챗봇에 질문하고 응답 받기
+            response = st.session_state.chatbot({"question": prompt})
+            answer = response["answer"]
+            
+            # 참고 페이지 추출
+            if "source_documents" in response:
+                pages = [doc.metadata.get('page', 'N/A') for doc in response["source_documents"]]
+                answer += f"\n\n**참고 페이지**: {', '.join(map(str, pages))}"
+            
+            # 챗봇 메시지 추가
+            st.session_state.messages.append({"role": "assistant", "content": answer})
+            
+            # 챗봇 메시지 표시
+            with st.container():
+                st.markdown(f"""
+                <div class="chat-message bot">
+                    <div class="avatar">🤖</div>
+                    <div class="message">{answer}</div>
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.error("챗봇이 초기화되지 않았습니다. 사이드바에서 '챗봇 초기화' 버튼을 클릭하여 시작하세요.")
 
 # 푸터
 st.markdown("---")
