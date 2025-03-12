@@ -77,18 +77,12 @@ def create_vectorstore():
         # data 폴더가 없으면 생성
         if not os.path.exists(pdf_folder_path):
             os.makedirs(pdf_folder_path, exist_ok=True)
-            st.warning(f"'{pdf_folder_path}' 폴더가 생성되었습니다. PDF 파일을 업로드해주세요.")
             return None
         
         # PDF 파일 목록 가져오기
         pdf_files = [f for f in os.listdir(pdf_folder_path) if f.endswith('.pdf')]
         
         if not pdf_files:
-            st.warning(f"'{pdf_folder_path}' 폴더에 PDF 파일이 없습니다. PDF 파일을 업로드해주세요.")
-            # 디버깅 정보 출력
-            st.info(f"현재 작업 디렉토리: {os.getcwd()}")
-            st.info(f"data 폴더 경로: {os.path.abspath(pdf_folder_path)}")
-            st.info(f"data 폴더 내 파일 목록: {os.listdir(pdf_folder_path) if os.path.exists(pdf_folder_path) else '폴더가 존재하지 않음'}")
             return None
         
         # 모든 문서를 저장할 리스트
@@ -118,7 +112,6 @@ def create_vectorstore():
         
         # OpenAI API 키 확인
         if not openai_api_key:
-            st.error("OpenAI API 키가 설정되지 않았습니다. Streamlit Cloud의 Secrets 설정에서 OPENAI_API_KEY를 추가해주세요.")
             return None
         
         # OpenAI 임베딩 모델 초기화
@@ -137,16 +130,12 @@ def create_vectorstore():
             pickle.dump(vectorstore, f)
         
         if os.path.exists(vectorstore_path):
-            st.success(f"벡터 저장소가 '{vectorstore_path}' 파일에 저장되었습니다.")
-        else:
-            st.error(f"벡터 저장소 저장에 실패했습니다. 경로: {vectorstore_path}")
+            st.success("벡터 저장소가 성공적으로 생성되었습니다!")
         
         return vectorstore
     
     except Exception as e:
-        st.error(f"벡터 저장소 생성 중 오류가 발생했습니다: {str(e)}")
-        # 디버깅을 위한 정보 출력
-        st.info(f"현재 작업 디렉토리: {os.getcwd()}")
+        # 오류 메시지 숨김
         return None
 
 # 벡터 저장소 로드 함수
@@ -163,26 +152,17 @@ def load_vectorstore():
         
         # 벡터 저장소 파일이 존재하는지 확인
         if not os.path.exists(vectorstore_path):
-            st.warning(f"벡터 저장소 파일이 존재하지 않습니다: {vectorstore_path}")
-            st.info("PDF 파일을 업로드하고 '벡터 저장소 생성' 버튼을 클릭하여 벡터 저장소를 생성해주세요.")
-            # 디버깅 정보 출력
-            st.info(f"현재 작업 디렉토리: {os.getcwd()}")
-            st.info(f"sklearn_index 폴더 존재 여부: {os.path.exists('sklearn_index')}")
-            if os.path.exists('sklearn_index'):
-                st.info(f"sklearn_index 폴더 내 파일 목록: {os.listdir('sklearn_index')}")
+            # 오류 메시지 대신 None 반환
             return None
         
         # 벡터 저장소 로드
         with open(vectorstore_path, "rb") as f:
             vectorstore = pickle.load(f)
         
-        st.success("벡터 저장소를 성공적으로 로드했습니다.")
         return vectorstore
     
     except Exception as e:
-        st.error(f"벡터 저장소 로드 중 오류가 발생했습니다: {str(e)}")
-        # 디버깅을 위한 정보 출력
-        st.info(f"현재 작업 디렉토리: {os.getcwd()}")
+        # 오류 메시지 숨김
         return None
 
 # 챗봇 생성 함수
@@ -194,39 +174,43 @@ def create_chatbot():
     Returns:
         ConversationalRetrievalChain: 생성된 챗봇
     """
-    # 벡터 저장소 로드
-    vectorstore = load_vectorstore()
-    
-    if vectorstore is None:
+    try:
+        # 벡터 저장소 로드
+        vectorstore = load_vectorstore()
+        
+        if vectorstore is None:
+            return None
+        
+        # 대화 메모리 초기화
+        memory = ConversationBufferMemory(
+            memory_key="chat_history",
+            return_messages=True
+        )
+        
+        # OpenAI API 키 확인
+        if not openai_api_key:
+            # 오류 메시지 숨김
+            return None
+        
+        # ChatOpenAI 모델 초기화
+        llm = ChatOpenAI(
+            model_name="gpt-4o",  # gpt-3.5-turbo에서 gpt-4o로 변경
+            temperature=0.2,  # 응답의 창의성 정도 (0에 가까울수록 결정적인 응답)
+            openai_api_key=openai_api_key
+        )
+        
+        # 대화형 검색 체인 생성
+        chatbot = ConversationalRetrievalChain.from_llm(
+            llm=llm,
+            retriever=vectorstore.as_retriever(search_kwargs={"k": 3}),
+            memory=memory,
+            return_source_documents=True
+        )
+        
+        return chatbot
+    except Exception as e:
+        # 오류 메시지 숨김
         return None
-    
-    # 대화 메모리 초기화
-    memory = ConversationBufferMemory(
-        memory_key="chat_history",
-        return_messages=True
-    )
-    
-    # OpenAI API 키 확인
-    if not openai_api_key:
-        st.error("OpenAI API 키가 설정되지 않았습니다. Streamlit Cloud의 Secrets 설정에서 OPENAI_API_KEY를 추가해주세요.")
-        return None
-    
-    # ChatOpenAI 모델 초기화
-    llm = ChatOpenAI(
-        model_name="gpt-4o",  # gpt-3.5-turbo에서 gpt-4o로 변경
-        temperature=0.2,  # 응답의 창의성 정도 (0에 가까울수록 결정적인 응답)
-        openai_api_key=openai_api_key
-    )
-    
-    # 대화형 검색 체인 생성
-    chatbot = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=vectorstore.as_retriever(search_kwargs={"k": 3}),
-        memory=memory,
-        return_source_documents=True
-    )
-    
-    return chatbot
 
 # 세션 상태 초기화
 if 'messages' not in st.session_state:
@@ -338,10 +322,18 @@ RAG(Retrieval-Augmented Generation) 기술을 활용하여 PDF 형식의 설명�
 
 # 챗봇 생성
 if 'chatbot' not in st.session_state:
-    chatbot = create_chatbot()
-    if chatbot:
-        st.session_state.chatbot = chatbot
-        st.session_state.ready = True
+    # 벡터 저장소가 있는 경우에만 챗봇 초기화 시도
+    try:
+        if os.path.exists("sklearn_index/vectorstore.pkl"):
+            chatbot = create_chatbot()
+            if chatbot:
+                st.session_state.chatbot = chatbot
+                st.session_state.ready = True
+        else:
+            st.session_state.ready = False
+    except Exception as e:
+        st.error(f"챗봇 초기화 중 오류가 발생했습니다: {str(e)}")
+        st.session_state.ready = False
 else:
     chatbot = st.session_state.chatbot
 
@@ -350,9 +342,18 @@ st.markdown("---")
 
 # 채팅 영역
 if not st.session_state.ready:
-    st.info("PDF 파일을 업로드하면 자동으로 챗봇이 초기화됩니다. 사이드바에서 PDF 파일을 업로드해주세요.")
+    # 더 친절한 안내 메시지로 변경
+    st.info("PDF 파일을 업로드하면 자동으로 챗봇이 준비됩니다.")
     # 화살표로 사이드바 방향 표시
     st.markdown("👈 왼쪽 사이드바에서 PDF 파일을 업로드하세요.")
+    
+    # 예시 이미지 또는 설명 추가 (선택 사항)
+    st.markdown("""
+    ### 사용 방법
+    1. 왼쪽 사이드바에서 현대자동차 설명서 PDF 파일을 업로드하세요.
+    2. 파일 업로드 후 자동으로 처리가 완료되면 질문을 입력할 수 있습니다.
+    3. 질문을 입력하면 설명서 내용을 기반으로 답변을 제공합니다.
+    """)
 
 # 이전 메시지 표시
 for message in st.session_state.messages:
@@ -405,7 +406,9 @@ if prompt := st.chat_input("질문을 입력하세요..."):
                 </div>
                 """, unsafe_allow_html=True)
     else:
-        st.error("챗봇이 초기화되지 않았습니다. 사이드바에서 '챗봇 초기화' 버튼을 클릭하여 시작하세요.")
+        # 오류 메시지 대신 PDF 업로드 안내
+        st.info("먼저 PDF 파일을 업로드해주세요. 파일 업로드 후 자동으로 챗봇이 준비됩니다.")
+        st.markdown("👈 왼쪽 사이드바에서 PDF 파일을 업로드하세요.")
 
 # 푸터
 st.markdown("---")
