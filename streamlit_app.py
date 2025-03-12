@@ -70,7 +70,7 @@ if 'ready' not in st.session_state:
     st.session_state.ready = False
 
 if 'vectorstore_created' not in st.session_state:
-    st.session_state.vectorstore_created = os.path.exists("sklearn_index/vectorstore.pkl")
+    st.session_state.vectorstore_created = os.path.exists("sklearn_index/vectorstore.json")
 
 # 벡터 저장소 생성 함수
 def create_vectorstore():
@@ -131,17 +131,22 @@ def create_vectorstore():
         # OpenAI 임베딩 모델 초기화
         embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
         
-        # scikit-learn 벡터 저장소 생성
-        vectorstore = SKLearnVectorStore.from_documents(chunks, embeddings)
-        
         # sklearn_index 폴더가 없으면 생성
         if not os.path.exists("sklearn_index"):
             os.makedirs("sklearn_index", exist_ok=True)
         
-        # 벡터 저장소 저장 (pickle 사용)
-        vectorstore_path = "sklearn_index/vectorstore.pkl"
-        with open(vectorstore_path, "wb") as f:
-            pickle.dump(vectorstore, f)
+        # 벡터 저장소 파일 경로 지정
+        vectorstore_path = "sklearn_index/vectorstore.json"
+        
+        # persist_path를 지정하여 scikit-learn 벡터 저장소 생성
+        vectorstore = SKLearnVectorStore.from_documents(
+            documents=chunks, 
+            embedding=embeddings,
+            persist_path=vectorstore_path  # 저장 경로 지정 (파일 경로)
+        )
+        
+        # 벡터 저장소 저장
+        vectorstore.persist()
         
         if os.path.exists(vectorstore_path):
             st.success("벡터 저장소가 성공적으로 생성되었습니다!")
@@ -163,17 +168,31 @@ def load_vectorstore():
         SKLearnVectorStore: 로드된 벡터 저장소
     """
     try:
-        vectorstore_path = "sklearn_index/vectorstore.pkl"
+        vectorstore_path = "sklearn_index/vectorstore.json"
         
         # 벡터 저장소 파일이 존재하는지 확인
         if not os.path.exists(vectorstore_path):
+            st.error(f"벡터 저장소 파일이 존재하지 않습니다: {vectorstore_path}")
             return None
         
-        # 벡터 저장소 로드
-        with open(vectorstore_path, "rb") as f:
-            vectorstore = pickle.load(f)
+        # OpenAI API 키 확인
+        if not openai_api_key:
+            st.error("OpenAI API 키가 설정되지 않았습니다.")
+            return None
+            
+        # OpenAI 임베딩 모델 초기화
+        embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
         
-        return vectorstore
+        # 벡터 저장소 로드
+        try:
+            vectorstore = SKLearnVectorStore(
+                embedding=embeddings,
+                persist_path=vectorstore_path
+            )
+            return vectorstore
+        except Exception as e:
+            st.error(f"벡터 저장소 로드 중 오류가 발생했습니다: {str(e)}")
+            return None
     
     except Exception as e:
         st.error(f"벡터 저장소 로드 중 오류가 발생했습니다: {str(e)}")
