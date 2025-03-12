@@ -57,80 +57,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 세션 상태 초기화
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
-
-if 'ready' not in st.session_state:
-    st.session_state.ready = False
-
-# 사이드바 구성
-with st.sidebar:
-    st.header("챗봇 설정")
-    
-    # 버튼 두 개를 가로로 배치
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("챗봇 초기화", use_container_width=True):
-            with st.spinner("챗봇을 초기화 중입니다..."):
-                vectorstore = load_vectorstore()
-                if vectorstore:
-                    st.session_state.chatbot = create_chatbot()
-                    st.session_state.ready = True
-                    st.success("챗봇이 준비되었습니다!")
-                    st.experimental_rerun()
-    
-    with col2:
-        if st.button("벡터 저장소 생성", use_container_width=True):
-            with st.spinner("벡터 저장소를 생성 중입니다..."):
-                vectorstore = create_vectorstore()
-                if vectorstore:
-                    st.success("벡터 저장소가 성공적으로 생성되었습니다!")
-                    st.session_state.ready = False
-                    st.info("이제 '챗봇 초기화' 버튼을 클릭하여 챗봇을 초기화해주세요.")
-    
-    # PDF 파일 업로드 기능
-    st.subheader("PDF 파일 업로드")
-    uploaded_file = st.file_uploader("PDF 파일을 업로드하세요", type="pdf")
-    
-    if uploaded_file is not None:
-        # data 폴더가 없으면 생성
-        if not os.path.exists("./data/"):
-            os.makedirs("./data/")
-        
-        # 업로드된 파일 저장
-        with open(os.path.join("./data/", uploaded_file.name), "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        
-        st.success(f"'{uploaded_file.name}' 파일이 성공적으로 업로드되었습니다!")
-    
-    st.markdown("---")
-    st.markdown("### 예시 질문")
-    example_questions = [
-        "아반떼 엔진 오일은 어떻게 교체하나요?",
-        "타이어 공기압은 얼마로 유지해야 하나요?",
-        "타이어가 펑크났어. 해결책을 알려줘",
-        "창문에 서리가 자꾸 껴요. 어떻게 해야 하나요?",
-        "연비를 향상시키는 방법이 있을까요?"
-    ]
-    
-    for q in example_questions:
-        if st.button(q, use_container_width=True):
-            if st.session_state.ready:
-                st.session_state.messages.append({"role": "user", "content": q})
-                st.experimental_rerun()
-            else:
-                st.warning("먼저 챗봇을 초기화해주세요.")
-
-# 메인 영역 구성
-# 제목 및 소개
-st.title("🚗 현대자동차 설명서 챗봇")
-st.markdown("""
-이 챗봇은 현대자동차 아반떼 2025 모델에 대한 정보를 제공합니다.
-RAG(Retrieval-Augmented Generation) 기술을 활용하여 PDF 형식의 설명서에서 관련 정보를 검색하고,
-이를 기반으로 정확한 답변을 생성합니다.
-""")
-
 # 벡터 저장소 생성 함수
 def create_vectorstore():
     """
@@ -256,6 +182,80 @@ def create_chatbot():
     )
     
     return chatbot
+
+# 세션 상태 초기화
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+
+if 'ready' not in st.session_state:
+    st.session_state.ready = False
+
+# 사이드바 구성
+with st.sidebar:
+    st.header("챗봇 설정")
+    
+    # 버튼 두 개를 가로로 배치
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("챗봇 초기화", use_container_width=True):
+            with st.spinner("챗봇을 초기화 중입니다..."):
+                vectorstore = load_vectorstore()
+                if vectorstore:
+                    st.session_state.chatbot = create_chatbot()
+                    st.session_state.ready = True
+                    st.success("챗봇이 준비되었습니다!")
+                    st.experimental_rerun()
+    
+    with col2:
+        if st.button("벡터 저장소 생성", use_container_width=True):
+            with st.spinner("벡터 저장소를 생성 중입니다..."):
+                vectorstore = create_vectorstore()
+                if vectorstore:
+                    st.success("벡터 저장소가 성공적으로 생성되었습니다!")
+                    st.session_state.ready = False
+                    st.info("이제 '챗봇 초기화' 버튼을 클릭하여 챗봇을 초기화해주세요.")
+    
+    # PDF 파일 업로드 기능
+    st.subheader("PDF 파일 업로드")
+    uploaded_file = st.file_uploader("PDF 파일을 업로드하세요", type="pdf")
+    
+    if uploaded_file is not None:
+        # data 폴더가 없으면 생성
+        if not os.path.exists("./data/"):
+            os.makedirs("./data/")
+        
+        # 업로드된 파일 저장
+        with open(os.path.join("./data/", uploaded_file.name), "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        
+        st.success(f"'{uploaded_file.name}' 파일이 성공적으로 업로드되었습니다!")
+    
+    st.markdown("---")
+    st.markdown("### 예시 질문")
+    example_questions = [
+        "아반떼 엔진 오일은 어떻게 교체하나요?",
+        "타이어 공기압은 얼마로 유지해야 하나요?",
+        "타이어가 펑크났어. 해결책을 알려줘",
+        "창문에 서리가 자꾸 껴요. 어떻게 해야 하나요?",
+        "연비를 향상시키는 방법이 있을까요?"
+    ]
+    
+    for q in example_questions:
+        if st.button(q, use_container_width=True):
+            if st.session_state.ready:
+                st.session_state.messages.append({"role": "user", "content": q})
+                st.experimental_rerun()
+            else:
+                st.warning("먼저 챗봇을 초기화해주세요.")
+
+# 메인 영역 구성
+# 제목 및 소개
+st.title("🚗 현대자동차 설명서 챗봇")
+st.markdown("""
+이 챗봇은 현대자동차 아반떼 2025 모델에 대한 정보를 제공합니다.
+RAG(Retrieval-Augmented Generation) 기술을 활용하여 PDF 형식의 설명서에서 관련 정보를 검색하고,
+이를 기반으로 정확한 답변을 생성합니다.
+""")
 
 # 챗봇 생성
 if 'chatbot' not in st.session_state:
