@@ -1,4 +1,5 @@
-import os
+import os  # 파일 경로 처리
+import pickle  # 파일 저장 및 로드  
 from langchain.document_loaders import PyPDFLoader  # PDF 파일 로드
 from langchain.text_splitter import RecursiveCharacterTextSplitter  # 텍스트 분할
 from langchain.embeddings.openai import OpenAIEmbeddings  # OpenAI 임베딩 모델
@@ -62,9 +63,15 @@ def create_vectorstore():
     # scikit-learn 벡터 저장소 생성
     vectorstore = SKLearnVectorStore.from_documents(chunks, embeddings)
     
-    # 벡터 저장소 저장
-    vectorstore.save_local("sklearn_index")
-    print("벡터 저장소가 'sklearn_index' 폴더에 저장되었습니다.")
+    # sklearn_index 폴더가 없으면 생성
+    if not os.path.exists("sklearn_index"):
+        os.makedirs("sklearn_index")
+    
+    # 벡터 저장소 저장 (pickle 사용)
+    with open("sklearn_index/vectorstore.pkl", "wb") as f:
+        pickle.dump(vectorstore, f)
+    
+    print("벡터 저장소가 'sklearn_index/vectorstore.pkl' 파일에 저장되었습니다.")
     
     return vectorstore
 
