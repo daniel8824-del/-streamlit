@@ -238,7 +238,6 @@ with st.sidebar:
                         st.session_state.chatbot = create_chatbot()
                         st.session_state.ready = True
                         st.success("챗봇이 준비되었습니다!")
-                        st.experimental_rerun()
         
         with col2:
             if st.button("벡터 저장소 생성", use_container_width=True):
@@ -278,7 +277,6 @@ with st.sidebar:
                             st.session_state.chatbot = create_chatbot()
                             st.session_state.ready = True
                             st.success("챗봇이 준비되었습니다! 이제 질문을 입력하세요.")
-                            st.experimental_rerun()
             else:
                 st.error(f"파일 저장에 실패했습니다. 경로: {file_path}")
         except Exception as e:
@@ -300,6 +298,12 @@ with st.sidebar:
     
     for q in example_questions:
         if st.button(q, use_container_width=True):
+            # 벡터 저장소가 있지만 챗봇이 초기화되지 않은 경우에만 자동으로 초기화
+            if os.path.exists("sklearn_index/vectorstore.pkl") and not st.session_state.ready:
+                with st.spinner("챗봇을 초기화 중입니다..."):
+                    st.session_state.chatbot = create_chatbot()
+                    st.session_state.ready = True
+            
             if st.session_state.ready:
                 st.session_state.messages.append({"role": "user", "content": q})
                 
@@ -314,31 +318,41 @@ with st.sidebar:
                 
                 # 챗봇 응답 생성
                 with st.spinner("답변을 생성 중입니다..."):
-                    # 챗봇에 질문하고 응답 받기
-                    response = st.session_state.chatbot({"question": q})
-                    answer = response["answer"]
-                    
-                    # 참고 페이지 추출
-                    if "source_documents" in response:
-                        pages = [doc.metadata.get('page', 'N/A') for doc in response["source_documents"]]
-                        answer += f"\n\n**참고 페이지**: {', '.join(map(str, pages))}"
-                    
-                    # 챗봇 메시지 추가
-                    st.session_state.messages.append({"role": "assistant", "content": answer})
-                    
-                    # 챗봇 메시지 표시
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="chat-message bot">
-                            <div class="avatar">🤖</div>
-                            <div class="message">{answer}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                    try:
+                        # 챗봇에 질문하고 응답 받기
+                        response = st.session_state.chatbot({"question": q})
+                        answer = response["answer"]
+                        
+                        # 참고 페이지 추출
+                        if "source_documents" in response:
+                            pages = [doc.metadata.get('page', 'N/A') for doc in response["source_documents"]]
+                            answer += f"\n\n**참고 페이지**: {', '.join(map(str, pages))}"
+                        
+                        # 챗봇 메시지 추가
+                        st.session_state.messages.append({"role": "assistant", "content": answer})
+                        
+                        # 챗봇 메시지 표시
+                        with st.container():
+                            st.markdown(f"""
+                            <div class="chat-message bot">
+                                <div class="avatar">🤖</div>
+                                <div class="message">{answer}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    except Exception as e:
+                        st.error(f"답변 생성 중 오류가 발생했습니다: {str(e)}")
+                        # 오류 발생 시 챗봇 재초기화 시도
+                        with st.spinner("챗봇을 다시 초기화 중입니다..."):
+                            st.session_state.chatbot = create_chatbot()
+                            if st.session_state.chatbot:
+                                st.success("챗봇이 다시 초기화되었습니다. 질문을 다시 입력해주세요.")
+                            else:
+                                st.error("챗봇 초기화에 실패했습니다. PDF 파일을 다시 업로드해주세요.")
+                                st.session_state.ready = False
             else:
-                # 이미 경고 메시지가 있으면 표시하지 않음
-                if 'warning_shown' not in st.session_state:
+                # 벡터 저장소가 없는 경우에만 경고 메시지 표시
+                if not os.path.exists("sklearn_index/vectorstore.pkl"):
                     st.warning("먼저 PDF 파일을 업로드해주세요.")
-                    st.session_state.warning_shown = True
 
 # 메인 영역 구성
 # 제목 및 소개
@@ -349,15 +363,17 @@ RAG(Retrieval-Augmented Generation) 기술을 활용하여 PDF 형식의 설명�
 이를 기반으로 정확한 답변을 생성합니다.
 """)
 
-# 챗봇 생성
+# 챗봇 생성 (사용자 입력 전에 먼저 초기화)
 if 'chatbot' not in st.session_state:
     # 벡터 저장소가 있는 경우에만 챗봇 초기화 시도
     try:
         if os.path.exists("sklearn_index/vectorstore.pkl"):
-            chatbot = create_chatbot()
-            if chatbot:
-                st.session_state.chatbot = chatbot
-                st.session_state.ready = True
+            with st.spinner("챗봇을 초기화 중입니다..."):
+                chatbot = create_chatbot()
+                if chatbot:
+                    st.session_state.chatbot = chatbot
+                    st.session_state.ready = True
+                    st.success("챗봇이 준비되었습니다!")
         else:
             st.session_state.ready = False
     except Exception as e:
@@ -365,14 +381,16 @@ if 'chatbot' not in st.session_state:
 else:
     chatbot = st.session_state.chatbot
 
+# 사용자 입력 (상단으로 이동)
+prompt = st.chat_input("질문을 입력하세요...")
+
 # 구분선 추가
 st.markdown("---")
 
 # 채팅 영역
-if not st.session_state.ready:
-    # 더 친절한 안내 메시지로 변경
+if not st.session_state.ready and not os.path.exists("sklearn_index/vectorstore.pkl"):
+    # PDF 파일이 업로드되지 않은 경우에만 안내 메시지 표시
     st.info("PDF 파일을 업로드하면 자동으로 챗봇이 준비됩니다.")
-    # 화살표로 사이드바 방향 표시
     st.markdown("👈 왼쪽 사이드바에서 PDF 파일을 업로드하세요.")
     
     # 사용 방법 안내 (한 번만 표시)
@@ -382,9 +400,6 @@ if not st.session_state.ready:
     2. 파일 업로드 후 자동으로 처리가 완료되면 질문을 입력할 수 있습니다.
     3. 질문을 입력하면 설명서 내용을 기반으로 답변을 제공합니다.
     """)
-else:
-    # 챗봇이 준비된 경우 사용 방법 안내 숨김
-    pass
 
 # 이전 메시지 표시
 for message in st.session_state.messages:
@@ -400,8 +415,8 @@ for message in st.session_state.messages:
         </div>
         """, unsafe_allow_html=True)
 
-# 사용자 입력
-if prompt := st.chat_input("질문을 입력하세요..."):
+# 사용자 입력 처리
+if prompt:
     # 사용자 메시지 추가
     st.session_state.messages.append({"role": "user", "content": prompt})
     
@@ -414,31 +429,48 @@ if prompt := st.chat_input("질문을 입력하세요..."):
         </div>
         """, unsafe_allow_html=True)
     
+    # 벡터 저장소가 있지만 챗봇이 초기화되지 않은 경우에만 자동으로 초기화
+    if os.path.exists("sklearn_index/vectorstore.pkl") and not st.session_state.ready:
+        with st.spinner("챗봇을 초기화 중입니다..."):
+            st.session_state.chatbot = create_chatbot()
+            st.session_state.ready = True
+    
     if st.session_state.ready:
         with st.spinner("답변을 생성 중입니다..."):
-            # 챗봇에 질문하고 응답 받기
-            response = st.session_state.chatbot({"question": prompt})
-            answer = response["answer"]
-            
-            # 참고 페이지 추출
-            if "source_documents" in response:
-                pages = [doc.metadata.get('page', 'N/A') for doc in response["source_documents"]]
-                answer += f"\n\n**참고 페이지**: {', '.join(map(str, pages))}"
-            
-            # 챗봇 메시지 추가
-            st.session_state.messages.append({"role": "assistant", "content": answer})
-            
-            # 챗봇 메시지 표시
-            with st.container():
-                st.markdown(f"""
-                <div class="chat-message bot">
-                    <div class="avatar">🤖</div>
-                    <div class="message">{answer}</div>
-                </div>
-                """, unsafe_allow_html=True)
+            try:
+                # 챗봇에 질문하고 응답 받기
+                response = st.session_state.chatbot({"question": prompt})
+                answer = response["answer"]
+                
+                # 참고 페이지 추출
+                if "source_documents" in response:
+                    pages = [doc.metadata.get('page', 'N/A') for doc in response["source_documents"]]
+                    answer += f"\n\n**참고 페이지**: {', '.join(map(str, pages))}"
+                
+                # 챗봇 메시지 추가
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+                
+                # 챗봇 메시지 표시
+                with st.container():
+                    st.markdown(f"""
+                    <div class="chat-message bot">
+                        <div class="avatar">🤖</div>
+                        <div class="message">{answer}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"답변 생성 중 오류가 발생했습니다: {str(e)}")
+                # 오류 발생 시 챗봇 재초기화 시도
+                with st.spinner("챗봇을 다시 초기화 중입니다..."):
+                    st.session_state.chatbot = create_chatbot()
+                    if st.session_state.chatbot:
+                        st.success("챗봇이 다시 초기화되었습니다. 질문을 다시 입력해주세요.")
+                    else:
+                        st.error("챗봇 초기화에 실패했습니다. PDF 파일을 다시 업로드해주세요.")
+                        st.session_state.ready = False
     else:
-        # 이미 메시지가 있으면 반복 안내 메시지 표시하지 않음
-        if len(st.session_state.messages) <= 1:
+        # 벡터 저장소가 없는 경우에만 경고 메시지 표시
+        if not os.path.exists("sklearn_index/vectorstore.pkl"):
             st.info("먼저 PDF 파일을 업로드해주세요.")
             st.markdown("👈 왼쪽 사이드바에서 PDF 파일을 업로드하세요.")
 
