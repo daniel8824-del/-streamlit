@@ -13,6 +13,11 @@ from dotenv import load_dotenv  # 환경 변수 로드
 # .env 파일에서 환경 변수 로드
 load_dotenv()
 
+# Streamlit Secrets에서 OpenAI API 키 가져오기
+openai_api_key = os.environ.get("OPENAI_API_KEY")
+if not openai_api_key and hasattr(st, "secrets") and "OPENAI_API_KEY" in st.secrets:
+    openai_api_key = st.secrets["OPENAI_API_KEY"]
+
 # 페이지 설정
 st.set_page_config(
     page_title="현대자동차 설명서 챗봇",
@@ -106,8 +111,13 @@ def create_vectorstore():
     chunks = text_splitter.split_documents(all_docs)
     st.info(f"총 {len(chunks)}개의 청크로 분할되었습니다.")
     
+    # OpenAI API 키 확인
+    if not openai_api_key:
+        st.error("OpenAI API 키가 설정되지 않았습니다. Streamlit Cloud의 Secrets 설정에서 OPENAI_API_KEY를 추가해주세요.")
+        return None
+    
     # OpenAI 임베딩 모델 초기화
-    embeddings = OpenAIEmbeddings()
+    embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
     
     # scikit-learn 벡터 저장소 생성
     vectorstore = SKLearnVectorStore.from_documents(chunks, embeddings)
@@ -167,10 +177,16 @@ def create_chatbot():
         return_messages=True
     )
     
+    # OpenAI API 키 확인
+    if not openai_api_key:
+        st.error("OpenAI API 키가 설정되지 않았습니다. Streamlit Cloud의 Secrets 설정에서 OPENAI_API_KEY를 추가해주세요.")
+        return None
+    
     # ChatOpenAI 모델 초기화
     llm = ChatOpenAI(
         model_name="gpt-4o",  # gpt-3.5-turbo에서 gpt-4o로 변경
-        temperature=0.2  # 응답의 창의성 정도 (0에 가까울수록 결정적인 응답)
+        temperature=0.2,  # 응답의 창의성 정도 (0에 가까울수록 결정적인 응답)
+        openai_api_key=openai_api_key
     )
     
     # 대화형 검색 체인 생성
