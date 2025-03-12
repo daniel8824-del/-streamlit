@@ -62,6 +62,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# 세션 상태 초기화
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+
+if 'ready' not in st.session_state:
+    st.session_state.ready = False
+
+if 'vectorstore_created' not in st.session_state:
+    st.session_state.vectorstore_created = os.path.exists("sklearn_index/vectorstore.pkl")
+
 # 벡터 저장소 생성 함수
 def create_vectorstore():
     """
@@ -70,6 +80,10 @@ def create_vectorstore():
     Returns:
         SKLearnVectorStore: 생성된 벡터 저장소
     """
+    # 이미 생성된 경우 다시 생성하지 않음
+    if st.session_state.vectorstore_created:
+        return load_vectorstore()
+    
     try:
         # PDF 파일 경로 설정 (data 폴더 내의 모든 PDF 파일)
         pdf_folder_path = "./data/"
@@ -131,11 +145,12 @@ def create_vectorstore():
         
         if os.path.exists(vectorstore_path):
             st.success("벡터 저장소가 성공적으로 생성되었습니다!")
+            st.session_state.vectorstore_created = True
         
         return vectorstore
     
     except Exception as e:
-        # 오류 메시지 숨김
+        st.error(f"벡터 저장소 생성 중 오류가 발생했습니다: {str(e)}")
         return None
 
 # 벡터 저장소 로드 함수
@@ -152,7 +167,6 @@ def load_vectorstore():
         
         # 벡터 저장소 파일이 존재하는지 확인
         if not os.path.exists(vectorstore_path):
-            # 오류 메시지 대신 None 반환
             return None
         
         # 벡터 저장소 로드
@@ -162,7 +176,7 @@ def load_vectorstore():
         return vectorstore
     
     except Exception as e:
-        # 오류 메시지 숨김
+        st.error(f"벡터 저장소 로드 중 오류가 발생했습니다: {str(e)}")
         return None
 
 # 챗봇 생성 함수
@@ -189,7 +203,7 @@ def create_chatbot():
         
         # OpenAI API 키 확인
         if not openai_api_key:
-            # 오류 메시지 숨김
+            st.error("OpenAI API 키가 설정되지 않았습니다.")
             return None
         
         # ChatOpenAI 모델 초기화
@@ -209,15 +223,118 @@ def create_chatbot():
         
         return chatbot
     except Exception as e:
-        # 오류 메시지 숨김
+        st.error(f"챗봇 생성 중 오류가 발생했습니다: {str(e)}")
         return None
 
-# 세션 상태 초기화
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
+# 메인 영역 구성
+# 제목 및 소개
+st.title("🚗 현대자동차 설명서 챗봇")
+st.markdown("""
+이 챗봇은 현대자동차 아반떼 2025 모델에 대한 정보를 제공합니다.
+RAG(Retrieval-Augmented Generation) 기술을 활용하여 PDF 형식의 설명서에서 관련 정보를 검색하고,
+이를 기반으로 정확한 답변을 생성합니다.
+""")
 
-if 'ready' not in st.session_state:
-    st.session_state.ready = False
+# 사용자 입력 (상단으로 이동)
+prompt = st.chat_input("질문을 입력하세요...")
+
+# 벡터 저장소가 있는지 확인하고 챗봇 초기화
+if st.session_state.vectorstore_created and not st.session_state.ready:
+    with st.spinner("챗봇을 초기화 중입니다..."):
+        chatbot = create_chatbot()
+        if chatbot:
+            st.session_state.chatbot = chatbot
+            st.session_state.ready = True
+
+# 구분선 추가
+st.markdown("---")
+
+# 채팅 영역
+if not st.session_state.vectorstore_created:
+    # PDF 파일이 업로드되지 않은 경우에만 안내 메시지 표시
+    st.info("PDF 파일을 업로드하면 자동으로 챗봇이 준비됩니다.")
+    st.markdown("👈 왼쪽 사이드바에서 PDF 파일을 업로드하세요.")
+    
+    # 사용 방법 안내 (한 번만 표시)
+    st.markdown("""
+    ### 사용 방법
+    1. 왼쪽 사이드바에서 현대자동차 설명서 PDF 파일을 업로드하세요.
+    2. 파일 업로드 후 자동으로 처리가 완료되면 질문을 입력할 수 있습니다.
+    3. 질문을 입력하면 설명서 내용을 기반으로 답변을 제공합니다.
+    """)
+
+# 이전 메시지 표시
+for message in st.session_state.messages:
+    with st.container():
+        st.markdown(f"""
+        <div class="chat-message {'bot' if message['role'] == 'assistant' else 'user'}">
+            <div class="avatar">
+                {'🤖' if message['role'] == 'assistant' else '👤'}
+            </div>
+            <div class="message">
+                {message['content']}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# 사용자 입력 처리
+if prompt:
+    # 사용자 메시지 추가
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    # 사용자 메시지 표시
+    with st.container():
+        st.markdown(f"""
+        <div class="chat-message user">
+            <div class="avatar">👤</div>
+            <div class="message">{prompt}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # 벡터 저장소가 있지만 챗봇이 초기화되지 않은 경우 자동으로 초기화
+    if st.session_state.vectorstore_created and not st.session_state.ready:
+        with st.spinner("챗봇을 초기화 중입니다..."):
+            st.session_state.chatbot = create_chatbot()
+            st.session_state.ready = True
+    
+    if st.session_state.ready:
+        with st.spinner("답변을 생성 중입니다..."):
+            try:
+                # 챗봇에 질문하고 응답 받기
+                response = st.session_state.chatbot({"question": prompt})
+                answer = response["answer"]
+                
+                # 참고 페이지 추출
+                if "source_documents" in response:
+                    pages = [doc.metadata.get('page', 'N/A') for doc in response["source_documents"]]
+                    answer += f"\n\n**참고 페이지**: {', '.join(map(str, pages))}"
+                
+                # 챗봇 메시지 추가
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+                
+                # 챗봇 메시지 표시
+                with st.container():
+                    st.markdown(f"""
+                    <div class="chat-message bot">
+                        <div class="avatar">🤖</div>
+                        <div class="message">{answer}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"답변 생성 중 오류가 발생했습니다: {str(e)}")
+                # 오류 발생 시 챗봇 재초기화 시도
+                with st.spinner("챗봇을 다시 초기화 중입니다..."):
+                    st.session_state.chatbot = create_chatbot()
+                    if st.session_state.chatbot:
+                        st.success("챗봇이 다시 초기화되었습니다. 질문을 다시 입력해주세요.")
+                    else:
+                        st.error("챗봇 초기화에 실패했습니다. PDF 파일을 다시 업로드해주세요.")
+                        st.session_state.ready = False
+    else:
+        # 벡터 저장소가 없는 경우에만 경고 메시지 표시
+        if not st.session_state.vectorstore_created:
+            st.info("먼저 PDF 파일을 업로드해주세요.")
+            st.markdown("👈 왼쪽 사이드바에서 PDF 파일을 업로드하세요.")
 
 # 사이드바 구성
 with st.sidebar:
@@ -225,28 +342,6 @@ with st.sidebar:
     
     # 안내 메시지 추가
     st.info("PDF 파일을 업로드하면 자동으로 벡터 저장소가 생성되고 챗봇이 초기화됩니다.")
-    
-    # 수동 초기화 버튼 (필요한 경우에만 사용)
-    with st.expander("고급 설정", expanded=False):
-        st.caption("아래 버튼은 필요한 경우에만 사용하세요.")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("챗봇 초기화", use_container_width=True):
-                with st.spinner("챗봇을 초기화 중입니다..."):
-                    vectorstore = load_vectorstore()
-                    if vectorstore:
-                        st.session_state.chatbot = create_chatbot()
-                        st.session_state.ready = True
-                        st.success("챗봇이 준비되었습니다!")
-        
-        with col2:
-            if st.button("벡터 저장소 생성", use_container_width=True):
-                with st.spinner("벡터 저장소를 생성 중입니다..."):
-                    vectorstore = create_vectorstore()
-                    if vectorstore:
-                        st.success("벡터 저장소가 성공적으로 생성되었습니다!")
-                        st.session_state.ready = False
-                        st.info("이제 '챗봇 초기화' 버튼을 클릭하여 챗봇을 초기화해주세요.")
     
     # PDF 파일 업로드 기능
     st.subheader("PDF 파일 업로드")
@@ -267,24 +362,44 @@ with st.sidebar:
                 st.success(f"'{uploaded_file.name}' 파일이 성공적으로 업로드되었습니다!")
                 
                 # 파일 업로드 후 자동으로 벡터 저장소 생성
-                with st.spinner("벡터 저장소를 자동으로 생성 중입니다..."):
-                    vectorstore = create_vectorstore()
-                    if vectorstore:
-                        st.success("벡터 저장소가 성공적으로 생성되었습니다!")
-                        
-                        # 벡터 저장소 생성 후 자동으로 챗봇 초기화
-                        with st.spinner("챗봇을 초기화 중입니다..."):
-                            st.session_state.chatbot = create_chatbot()
-                            st.session_state.ready = True
-                            st.success("챗봇이 준비되었습니다! 이제 질문을 입력하세요.")
+                if not st.session_state.vectorstore_created:
+                    with st.spinner("벡터 저장소를 자동으로 생성 중입니다..."):
+                        vectorstore = create_vectorstore()
+                        if vectorstore:
+                            st.success("벡터 저장소가 성공적으로 생성되었습니다!")
+                            st.session_state.vectorstore_created = True
+                            
+                            # 벡터 저장소 생성 후 자동으로 챗봇 초기화
+                            with st.spinner("챗봇을 초기화 중입니다..."):
+                                st.session_state.chatbot = create_chatbot()
+                                st.session_state.ready = True
+                                st.success("챗봇이 준비되었습니다! 이제 질문을 입력하세요.")
             else:
                 st.error(f"파일 저장에 실패했습니다. 경로: {file_path}")
         except Exception as e:
             st.error(f"파일 업로드 중 오류가 발생했습니다: {str(e)}")
-            # 디버깅을 위한 정보 출력
-            st.info(f"현재 작업 디렉토리: {os.getcwd()}")
-            st.info(f"파일 이름: {uploaded_file.name}")
-            st.info(f"파일 크기: {len(uploaded_file.getbuffer())} 바이트")
+    
+    # 수동 초기화 버튼 (필요한 경우에만 사용)
+    with st.expander("고급 설정", expanded=False):
+        st.caption("아래 버튼은 필요한 경우에만 사용하세요.")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("챗봇 초기화", use_container_width=True):
+                with st.spinner("챗봇을 초기화 중입니다..."):
+                    vectorstore = load_vectorstore()
+                    if vectorstore:
+                        st.session_state.chatbot = create_chatbot()
+                        st.session_state.ready = True
+                        st.success("챗봇이 준비되었습니다!")
+        
+        with col2:
+            if st.button("벡터 저장소 생성", use_container_width=True):
+                with st.spinner("벡터 저장소를 생성 중입니다..."):
+                    vectorstore = create_vectorstore()
+                    if vectorstore:
+                        st.success("벡터 저장소가 성공적으로 생성되었습니다!")
+                        st.session_state.vectorstore_created = True
+                        st.info("이제 '챗봇 초기화' 버튼을 클릭하여 챗봇을 초기화해주세요.")
     
     st.markdown("---")
     st.markdown("### 예시 질문")
@@ -298,8 +413,8 @@ with st.sidebar:
     
     for q in example_questions:
         if st.button(q, use_container_width=True):
-            # 벡터 저장소가 있지만 챗봇이 초기화되지 않은 경우에만 자동으로 초기화
-            if os.path.exists("sklearn_index/vectorstore.pkl") and not st.session_state.ready:
+            # 벡터 저장소가 있지만 챗봇이 초기화되지 않은 경우 자동으로 초기화
+            if st.session_state.vectorstore_created and not st.session_state.ready:
                 with st.spinner("챗봇을 초기화 중입니다..."):
                     st.session_state.chatbot = create_chatbot()
                     st.session_state.ready = True
@@ -351,128 +466,8 @@ with st.sidebar:
                                 st.session_state.ready = False
             else:
                 # 벡터 저장소가 없는 경우에만 경고 메시지 표시
-                if not os.path.exists("sklearn_index/vectorstore.pkl"):
+                if not st.session_state.vectorstore_created:
                     st.warning("먼저 PDF 파일을 업로드해주세요.")
-
-# 메인 영역 구성
-# 제목 및 소개
-st.title("🚗 현대자동차 설명서 챗봇")
-st.markdown("""
-이 챗봇은 현대자동차 아반떼 2025 모델에 대한 정보를 제공합니다.
-RAG(Retrieval-Augmented Generation) 기술을 활용하여 PDF 형식의 설명서에서 관련 정보를 검색하고,
-이를 기반으로 정확한 답변을 생성합니다.
-""")
-
-# 챗봇 생성 (사용자 입력 전에 먼저 초기화)
-if 'chatbot' not in st.session_state:
-    # 벡터 저장소가 있는 경우에만 챗봇 초기화 시도
-    try:
-        if os.path.exists("sklearn_index/vectorstore.pkl"):
-            with st.spinner("챗봇을 초기화 중입니다..."):
-                chatbot = create_chatbot()
-                if chatbot:
-                    st.session_state.chatbot = chatbot
-                    st.session_state.ready = True
-                    st.success("챗봇이 준비되었습니다!")
-        else:
-            st.session_state.ready = False
-    except Exception as e:
-        st.session_state.ready = False
-else:
-    chatbot = st.session_state.chatbot
-
-# 사용자 입력 (상단으로 이동)
-prompt = st.chat_input("질문을 입력하세요...")
-
-# 구분선 추가
-st.markdown("---")
-
-# 채팅 영역
-if not st.session_state.ready and not os.path.exists("sklearn_index/vectorstore.pkl"):
-    # PDF 파일이 업로드되지 않은 경우에만 안내 메시지 표시
-    st.info("PDF 파일을 업로드하면 자동으로 챗봇이 준비됩니다.")
-    st.markdown("👈 왼쪽 사이드바에서 PDF 파일을 업로드하세요.")
-    
-    # 사용 방법 안내 (한 번만 표시)
-    st.markdown("""
-    ### 사용 방법
-    1. 왼쪽 사이드바에서 현대자동차 설명서 PDF 파일을 업로드하세요.
-    2. 파일 업로드 후 자동으로 처리가 완료되면 질문을 입력할 수 있습니다.
-    3. 질문을 입력하면 설명서 내용을 기반으로 답변을 제공합니다.
-    """)
-
-# 이전 메시지 표시
-for message in st.session_state.messages:
-    with st.container():
-        st.markdown(f"""
-        <div class="chat-message {'bot' if message['role'] == 'assistant' else 'user'}">
-            <div class="avatar">
-                {'🤖' if message['role'] == 'assistant' else '👤'}
-            </div>
-            <div class="message">
-                {message['content']}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-# 사용자 입력 처리
-if prompt:
-    # 사용자 메시지 추가
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    # 사용자 메시지 표시
-    with st.container():
-        st.markdown(f"""
-        <div class="chat-message user">
-            <div class="avatar">👤</div>
-            <div class="message">{prompt}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # 벡터 저장소가 있지만 챗봇이 초기화되지 않은 경우에만 자동으로 초기화
-    if os.path.exists("sklearn_index/vectorstore.pkl") and not st.session_state.ready:
-        with st.spinner("챗봇을 초기화 중입니다..."):
-            st.session_state.chatbot = create_chatbot()
-            st.session_state.ready = True
-    
-    if st.session_state.ready:
-        with st.spinner("답변을 생성 중입니다..."):
-            try:
-                # 챗봇에 질문하고 응답 받기
-                response = st.session_state.chatbot({"question": prompt})
-                answer = response["answer"]
-                
-                # 참고 페이지 추출
-                if "source_documents" in response:
-                    pages = [doc.metadata.get('page', 'N/A') for doc in response["source_documents"]]
-                    answer += f"\n\n**참고 페이지**: {', '.join(map(str, pages))}"
-                
-                # 챗봇 메시지 추가
-                st.session_state.messages.append({"role": "assistant", "content": answer})
-                
-                # 챗봇 메시지 표시
-                with st.container():
-                    st.markdown(f"""
-                    <div class="chat-message bot">
-                        <div class="avatar">🤖</div>
-                        <div class="message">{answer}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            except Exception as e:
-                st.error(f"답변 생성 중 오류가 발생했습니다: {str(e)}")
-                # 오류 발생 시 챗봇 재초기화 시도
-                with st.spinner("챗봇을 다시 초기화 중입니다..."):
-                    st.session_state.chatbot = create_chatbot()
-                    if st.session_state.chatbot:
-                        st.success("챗봇이 다시 초기화되었습니다. 질문을 다시 입력해주세요.")
-                    else:
-                        st.error("챗봇 초기화에 실패했습니다. PDF 파일을 다시 업로드해주세요.")
-                        st.session_state.ready = False
-    else:
-        # 벡터 저장소가 없는 경우에만 경고 메시지 표시
-        if not os.path.exists("sklearn_index/vectorstore.pkl"):
-            st.info("먼저 PDF 파일을 업로드해주세요.")
-            st.markdown("👈 왼쪽 사이드바에서 PDF 파일을 업로드하세요.")
 
 # 푸터
 st.markdown("---")
